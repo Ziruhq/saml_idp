@@ -15,25 +15,31 @@ module SamlIdp
 
     def fresh
       builder = Builder::XmlMarkup.new(indent: 2)
+      builder.instruct!
       generated_reference_id do
-        builder.EntityDescriptor ID: reference_string,
+        builder.tag! "md:EntityDescriptor",
+          ID: reference_string,
           xmlns: Saml::XML::Namespaces::METADATA,
           "xmlns:md" => Saml::XML::Namespaces::METADATA,
+          "xmlns:saml" => Saml::XML::Namespaces::ASSERTION,
           "xmlns:ds" => Saml::XML::Namespaces::SIGNATURE,
           entityID: entity_id do |entity|
-            sign entity
-
-            entity.IDPSSODescriptor protocolSupportEnumeration: protocol_enumeration,
-                                    WantAuthnRequestsSigned: signed_auth_requests? do |descriptor|
-              build_key_descriptor descriptor
-              build_name_id_formats descriptor
-              build_single_sign_on_services descriptor
-              build_single_logout_services descriptor
-              build_attribute descriptor
-            end
-
-            build_contact entity
+          
+          sign entity 
+    
+          entity.tag! "md:IDPSSODescriptor",
+            protocolSupportEnumeration: protocol_enumeration,
+            SignedAuthRequests: signed_auth_requests? do |descriptor|
+            
+            build_key_descriptor(descriptor)
+            build_name_id_formats(descriptor)
+            build_single_sign_on_services(descriptor)
+            build_single_logout_services(descriptor)
+            build_attributes(descriptor)
           end
+    
+          build_contact(entity)
+        end
       end
     end
     alias_method :raw, :fresh
@@ -80,11 +86,11 @@ module SamlIdp
       end
     end
 
-    def build_attribute(el)
+    def build_attributes(el)
       attributes.each do |attribute|
         el.Attribute NameFormat: attribute.name_format,
-                     Name: attribute.name,
-                     FriendlyName: attribute.friendly_name do |attr|
+                    Name: attribute.name,
+                    FriendlyName: attribute.friendly_name do |attr|
           attribute.values.each do |value|
             attr.AttributeValue value
           end
