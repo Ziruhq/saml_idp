@@ -2,6 +2,7 @@ require 'saml_idp/name_id_formatter'
 require 'saml_idp/attribute_decorator'
 require 'saml_idp/algorithmable'
 require 'saml_idp/signable'
+
 module SamlIdp
   class MetadataBuilder
     include Algorithmable
@@ -13,46 +14,31 @@ module SamlIdp
     end
 
     def fresh
-      builder = Builder::XmlMarkup.new
+      builder = Builder::XmlMarkup.new(indent: 2)
       generated_reference_id do
         builder.EntityDescriptor ID: reference_string,
           xmlns: Saml::XML::Namespaces::METADATA,
-          "xmlns:saml" => Saml::XML::Namespaces::ASSERTION,
+          "xmlns:md" => Saml::XML::Namespaces::METADATA,
           "xmlns:ds" => Saml::XML::Namespaces::SIGNATURE,
           entityID: entity_id do |entity|
             sign entity
 
-            entity.IDPSSODescriptor protocolSupportEnumeration: protocol_enumeration do |descriptor|
+            entity.IDPSSODescriptor protocolSupportEnumeration: protocol_enumeration,
+                                    WantAuthnRequestsSigned: signed_auth_requests? do |descriptor|
               build_key_descriptor descriptor
-              build_endpoint descriptor, [
-                { tag: 'SingleLogoutService', url: single_logout_service_post_location, bind: 'HTTP-POST' }, 
-                { tag: 'SingleLogoutService', url: single_logout_service_redirect_location, bind: 'HTTP-Redirect'}
-              ]
               build_name_id_formats descriptor
-              build_endpoint descriptor, [
-                { tag: 'SingleSignOnService', url: single_service_post_location, bind: 'HTTP-POST' }, 
-                { tag: 'SingleSignOnService', url: single_service_redirect_location, bind: 'HTTP-Redirect'}
-              ]
+              build_single_sign_on_services descriptor
+              build_single_logout_services descriptor
               build_attribute descriptor
             end
 
-            entity.AttributeAuthorityDescriptor protocolSupportEnumeration: protocol_enumeration do |authority_descriptor|
-              build_key_descriptor authority_descriptor
-              build_organization authority_descriptor
-              build_contact authority_descriptor
-              build_endpoint authority_descriptor, [
-                { tag: 'AttributeService', url: attribute_service_location, bind: 'HTTP-Redirect' }
-              ]
-              build_name_id_formats authority_descriptor
-              build_attribute authority_descriptor
-            end
-
-            build_organization entity
             build_contact entity
           end
       end
     end
     alias_method :raw, :fresh
+
+    private
 
     def build_key_descriptor(el)
       el.KeyDescriptor use: "signing" do |key_descriptor|
@@ -63,14 +49,26 @@ module SamlIdp
         end
       end
     end
-    private :build_key_descriptor
 
     def build_name_id_formats(el)
       name_id_formats.each do |format|
         el.NameIDFormat format
       end
     end
-    private :build_name_id_formats
+
+    def build_single_sign_on_services(el)
+      build_endpoint(el, [
+        { tag: 'SingleSignOnService', url: single_service_post_location, bind: 'HTTP-POST' },
+        { tag: 'SingleSignOnService', url: single_service_redirect_location, bind: 'HTTP-Redirect' }
+      ])
+    end
+
+    def build_single_logout_services(el)
+      build_endpoint(el, [
+        { tag: 'SingleLogoutService', url: single_logout_service_post_location, bind: 'HTTP-POST' },
+        { tag: 'SingleLogoutService', url: single_logout_service_redirect_location, bind: 'HTTP-Redirect' }
+      ])
+    end
 
     def build_endpoint(el, end_points)
       end_points.each do |ep|
@@ -81,30 +79,18 @@ module SamlIdp
           Location: ep[:url]
       end
     end
-    private :build_endpoint
 
     def build_attribute(el)
       attributes.each do |attribute|
-        el.tag! "saml:Attribute",
-          NameFormat: attribute.name_format,
-          Name: attribute.name,
-          FriendlyName: attribute.friendly_name do |attribute_xml|
-            attribute.values.each do |value|
-              attribute_xml.tag! "saml:AttributeValue", value
-            end
+        el.Attribute NameFormat: attribute.name_format,
+                     Name: attribute.name,
+                     FriendlyName: attribute.friendly_name do |attr|
+          attribute.values.each do |value|
+            attr.AttributeValue value
           end
+        end
       end
     end
-    private :build_attribute
-
-    def build_organization(el)
-      el.Organization do |organization|
-        organization.OrganizationName organization_name, "xml:lang" => "en"
-        organization.OrganizationDisplayName organization_name, "xml:lang" => "en"
-        organization.OrganizationURL organization_url, "xml:lang" => "en"
-      end
-    end
-    private :build_organization
 
     def build_contact(el)
       el.ContactPerson contactType: "technical" do |contact|
@@ -115,22 +101,18 @@ module SamlIdp
         contact.TelephoneNumber technical_contact.telephone       if technical_contact.telephone
       end
     end
-    private :build_contact
 
     def reference_string
       "_#{reference_id}"
     end
-    private :reference_string
 
     def entity_id
       configurator.entity_id.presence || configurator.base_saml_location
     end
-    private :entity_id
 
     def protocol_enumeration
       Saml::XML::Namespaces::PROTOCOL
     end
-    private :protocol_enumeration
 
     def attributes
       @attributes ||= configurator.attributes.inject([]) do |list, (key, opts)|
@@ -139,17 +121,18 @@ module SamlIdp
         list
       end
     end
-    private :attributes
 
     def name_id_formats
       @name_id_formats ||= NameIdFormatter.new(configurator.name_id.formats).all
     end
-    private :name_id_formats
+
+    def signed_auth_requests?
+      !!configurator.signed_auth_requests
+    end
 
     def raw_algorithm
       configurator.algorithm
     end
-    private :raw_algorithm
 
     def x509_certificate
       SamlIdp.config.x509_certificate
@@ -160,10 +143,6 @@ module SamlIdp
     end
 
     %w[
-      support_email
-      organization_name
-      organization_url
-      attribute_service_location
       single_service_post_location
       single_service_redirect_location
       single_logout_service_post_location
@@ -173,7 +152,6 @@ module SamlIdp
       define_method(delegatable) do
         configurator.public_send delegatable
       end
-      private delegatable
     end
   end
 end

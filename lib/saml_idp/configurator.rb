@@ -23,6 +23,7 @@ module SamlIdp
     attr_accessor :assertion_consumer_service_hosts
     attr_accessor :session_expiry
     attr_accessor :logger
+    attr_accessor :signed_auth_requests
 
     def initialize
       self.x509_certificate = Default::X509_CERTIFICATE
@@ -35,11 +36,10 @@ module SamlIdp
       self.service_provider.persisted_metadata_getter = ->(id, service_provider) {  }
       self.session_expiry = 0
       self.attributes = {}
+      self.signed_auth_requests = false
       self.logger = defined?(::Rails) ? Rails.logger : ->(msg) { puts msg }
     end
 
-    # formats
-    # getter
     def name_id
       @name_id ||= OpenStruct.new
     end

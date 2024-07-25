@@ -52,17 +52,38 @@ module SamlIdp
         subject.configurator.technical_contact.sur_name      = "Runner"
         subject.configurator.technical_contact.telephone     = "1-800-555-5555"
         subject.configurator.technical_contact.email_address = "acme@example.com"
-
-        expect(subject.fresh).to match('<ContactPerson contactType="technical"><Company>ACME Corporation</Company><GivenName>Road</GivenName><SurName>Runner</SurName><EmailAddress>mailto:acme@example.com</EmailAddress><TelephoneNumber>1-800-555-5555</TelephoneNumber></ContactPerson>')
+      
+        xml = subject.fresh
+        expect(xml).to include('<ContactPerson contactType="technical">')
+        expect(xml).to include('<Company>ACME Corporation</Company>')
+        expect(xml).to include('<GivenName>Road</GivenName>')
+        expect(xml).to include('<SurName>Runner</SurName>')
+        expect(xml).to include('<EmailAddress>mailto:acme@example.com</EmailAddress>')
+        expect(xml).to include('<TelephoneNumber>1-800-555-5555</TelephoneNumber>')
+        expect(xml).to include('</ContactPerson>')
       end
 
       it "no fields" do
-        expect(subject.fresh).to match('<ContactPerson contactType="technical"></ContactPerson>')
+        expect(subject.fresh).to include('<ContactPerson contactType="technical">')
+        expect(subject.fresh).to include('</ContactPerson>')
+        expect(subject.fresh).not_to include('<Company>')
+        expect(subject.fresh).not_to include('<GivenName>')
+        expect(subject.fresh).not_to include('<SurName>')
+        expect(subject.fresh).not_to include('<EmailAddress>')
+        expect(subject.fresh).not_to include('<TelephoneNumber>')
       end
 
       it "just email" do
         subject.configurator.technical_contact.email_address = "acme@example.com"
-        expect(subject.fresh).to match('<ContactPerson contactType="technical"><EmailAddress>mailto:acme@example.com</EmailAddress></ContactPerson>')
+        
+        xml = subject.fresh
+        expect(xml).to include('<ContactPerson contactType="technical">')
+        expect(xml).to include('<EmailAddress>mailto:acme@example.com</EmailAddress>')
+        expect(xml).to include('</ContactPerson>')
+        expect(xml).not_to include('<Company>')
+        expect(xml).not_to include('<GivenName>')
+        expect(xml).not_to include('<SurName>')
+        expect(xml).not_to include('<TelephoneNumber>')
       end
 
     end
